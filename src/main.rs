@@ -1,55 +1,32 @@
-use tree_sitter::{Parser, Tree};
+use std::collections::HashSet;
+use std::path::Path;
+use setem_rs::{process_elm_file, process_elm_directory, generate_setters, setup_parser};
 
 fn main() {
-    let mut parser = Parser::new();
-    let language = tree_sitter_elm::LANGUAGE;
-    parser.set_language(&language.into()).expect("Error loading Elm grammar");
-
-    let elm_code = r#"
-module Main exposing (main)
-
-import Html exposing (Html, text)
-
-main : Html msg
-main =
-    text "Hello, Elm!"
-
-greet : String -> String
-greet name =
-    "Hello, " ++ name ++ "!"
-
-numbers : List Int
-numbers =
-    [ 1, 2, 3, 4, 5 ]
-
-add : Int -> Int -> Int
-add x y =
-    x + y
-"#;
-
-    let tree = parser.parse(elm_code, None).expect("Error parsing Elm code");
-    let root_node = tree.root_node();
+    let args: Vec<String> = std::env::args().collect();
     
-    println!("Root node: {:?}", root_node.kind());
-    println!("Root node range: {:?}", root_node.range());
-    println!("Number of children: {}", root_node.child_count());
+    if args.len() < 2 {
+        eprintln!("Usage: {} <elm_file_or_directory> [prefix]", args[0]);
+        std::process::exit(1);
+    }
     
-    print_tree(&tree, elm_code, root_node, 0);
-}
-
-fn print_tree(tree: &Tree, source: &str, node: tree_sitter::Node, depth: usize) {
-    let indent = "  ".repeat(depth);
-    let node_text = node.utf8_text(source.as_bytes()).unwrap_or("<error>");
+    let path = &args[1];
+    let prefix = args.get(2).map(|s| s.as_str()).unwrap_or("s_");
     
-    if node.child_count() == 0 {
-        println!("{}{}: \"{}\"", indent, node.kind(), node_text.trim());
+    let mut parser = setup_parser();
+    
+    let mut all_identifiers = HashSet::new();
+    
+    if Path::new(path).is_file() {
+        process_elm_file(path, &mut parser, &mut all_identifiers);
+    } else if Path::new(path).is_dir() {
+        process_elm_directory(path, &mut parser, &mut all_identifiers);
     } else {
-        println!("{}{}", indent, node.kind());
+        eprintln!("Error: {} is not a valid file or directory", path);
+        std::process::exit(1);
     }
     
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            print_tree(tree, source, child, depth + 1);
-        }
-    }
+    let setters = generate_setters(&all_identifiers, prefix);
+    println!("{}", setters);
 }
+
