@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::fs;
-use tree_sitter::{Parser, Query, QueryCursor};
 use streaming_iterator::StreamingIterator;
+use tree_sitter::{Parser, Query, QueryCursor};
 
 pub fn extract_record_fields(tree: &tree_sitter::Tree, source: &str) -> HashSet<String> {
     let mut identifiers = HashSet::new();
-    
+
     let query_str = r#"
         (field_type
           (lower_case_identifier) @field_name)
@@ -13,13 +13,13 @@ pub fn extract_record_fields(tree: &tree_sitter::Tree, source: &str) -> HashSet<
         (field
           (lower_case_identifier) @field_name)
     "#;
-    
+
     let language = tree_sitter_elm::LANGUAGE.into();
     let query = Query::new(&language, query_str).expect("Error creating query");
     let mut cursor = QueryCursor::new();
-    
+
     let mut captures = cursor.captures(&query, tree.root_node(), source.as_bytes());
-    
+
     while let Some((match_, capture_index)) = captures.next() {
         let capture = &match_.captures[*capture_index];
         let text = capture.node.utf8_text(source.as_bytes()).unwrap_or("");
@@ -27,7 +27,7 @@ pub fn extract_record_fields(tree: &tree_sitter::Tree, source: &str) -> HashSet<
             identifiers.insert(text.to_string());
         }
     }
-    
+
     identifiers
 }
 
@@ -47,7 +47,11 @@ pub fn process_elm_file(file_path: &str, parser: &mut Parser, identifiers: &mut 
     }
 }
 
-pub fn process_elm_directory(dir_path: &str, parser: &mut Parser, identifiers: &mut HashSet<String>) {
+pub fn process_elm_directory(
+    dir_path: &str,
+    parser: &mut Parser,
+    identifiers: &mut HashSet<String>,
+) {
     if let Ok(entries) = fs::read_dir(dir_path) {
         for entry in entries {
             if let Ok(entry) = entry {
@@ -72,7 +76,7 @@ pub fn process_elm_directory(dir_path: &str, parser: &mut Parser, identifiers: &
 
 pub fn generate_setters(identifiers: &HashSet<String>, prefix: &str) -> String {
     let mut setters = String::new();
-    
+
     for identifier in identifiers {
         let setter_def = format!(
             "{}{} : a -> {{ b | {} : a }} -> {{ b | {} : a }}\n{}{} value__ record__ =\n    {{ record__ | {} = value__ }}\n\n",
@@ -80,7 +84,7 @@ pub fn generate_setters(identifiers: &HashSet<String>, prefix: &str) -> String {
         );
         setters.push_str(&setter_def);
     }
-    
+
     setters
 }
 
@@ -92,3 +96,4 @@ pub fn setup_parser() -> Parser {
         .expect("Error loading Elm grammar");
     parser
 }
+
